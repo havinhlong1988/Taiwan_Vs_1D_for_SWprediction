@@ -1,0 +1,1 @@
+Extract the data from 3D Northern Taiwan Vs model to 1D model. Then using the input 1D model to predict the dispersion curve 
