@@ -52,7 +52,7 @@ import xarray as xr
 from pathlib import Path
 from scipy.interpolate import interp1d
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
+from scipy.ndimage import gaussian_filter
 
 # ==================================================
 # Parameters
@@ -68,6 +68,7 @@ OUT_FIG_1D_DIR.mkdir(parents=True, exist_ok=True)
 
 OUT_PROFILE_FIG = Path("figures/profiles.png")
 OUT_NODE_STA_FIG = Path("figures/model_nodes_stations.png")
+OUT_PROFILE_REL_FIG = Path("figures/profiles_relative.png")
 
 OUT_PROFILE_FIG.parent.mkdir(parents=True, exist_ok=True)
 
@@ -123,6 +124,11 @@ CPT_VS_AUTO = True
 CPT_VS = "seis"
 CPT_VS_MAN = Path("input/cpt/Vs_abs.cpt")
 CPT_TOPO = "geo"
+
+# Relative perturbation profile
+RELATIVE_PERCENT = 2.0        # default color scale: +/- 2 %
+CPT_RELATIVE = "polar"        # good diverging CPT for negative/positive perturbation
+RELATIVE_CPT_STEP = 0.1       # colorbar interval in %
 
 # 1D figure setting
 DEPTH_PLOT_MIN = DEPTH_MIN
@@ -199,6 +205,30 @@ def make_xarray_grid(z, x, y, name="grid"):
     )
     return da
 
+def compute_vs_perturbation_percent(vs_grid):
+    """
+    Compute relative Vs perturbation in percent.
+
+    Formula:
+        dVs(%) = (Vs(x,z) - mean_Vs(z)) / mean_Vs(z) * 100
+
+    Mean is calculated independently for each depth.
+    """
+    vs_grid = np.asarray(vs_grid, dtype=float)
+
+    mean_vs_depth = np.nanmean(vs_grid, axis=1)  # shape = n_depth
+
+    rel_grid = np.full_like(vs_grid, np.nan, dtype=float)
+
+    for i in range(vs_grid.shape[0]):
+        mean_vs = mean_vs_depth[i]
+
+        if not np.isfinite(mean_vs) or mean_vs == 0:
+            continue
+
+        rel_grid[i, :] = (vs_grid[i, :] - mean_vs) / mean_vs * 100.0
+
+    return rel_grid, mean_vs_depth
 
 def make_or_get_vs_cpt(vs_min, vs_max):
     """
@@ -247,6 +277,29 @@ def make_or_get_vs_cpt(vs_min, vs_max):
 
     return True, None
 
+def make_relative_cpt(rel_min, rel_max):
+    """
+    Make CPT for relative perturbation.
+
+    The main color range is controlled by RELATIVE_PERCENT, e.g. +/- 2%.
+    Values below/above the range will be clipped to the min/max CPT colors.
+    """
+    cmin = -abs(float(RELATIVE_PERCENT))
+    cmax = abs(float(RELATIVE_PERCENT))
+
+    if cmin == cmax:
+        cmin = -2.0
+        cmax = 2.0
+
+    pygmt.makecpt(
+        cmap=CPT_RELATIVE,
+        series=[cmin, cmax, RELATIVE_CPT_STEP],
+        continuous=True,
+        background=True,
+    )
+
+    print(f"[INFO] Relative perturbation actual min/max: {rel_min:.3f} / {rel_max:.3f} %")
+    print(f"[INFO] Relative perturbation color scale: {cmin:.3f} to {cmax:.3f} %")
 
 def grdimage_with_vs_cpt(fig, grid, use_current_cpt, cpt_file):
     """
@@ -786,9 +839,9 @@ def plot_full_profiles_pygmt(section_dict, extract_sta=None):
         y=y_topo,
         name="topography",
     )
-
+    vs_grid_smooth = gaussian_filter(vs_grid, sigma=(0.5, 1.0))
     vs_da = make_xarray_grid(
-        z=vs_grid,
+        z=vs_grid_smooth,
         x=x_grid,
         y=deps,
         name="vs",
@@ -936,6 +989,204 @@ def plot_full_profiles_pygmt(section_dict, extract_sta=None):
     fig.savefig(OUT_PROFILE_FIG, dpi=FIG_DPI)
     print(f"[OK] Saved profile figure: {OUT_PROFILE_FIG}")
 
+def plot_full_profiles_relative_pygmt(section_dict, extract_sta=None):
+    """
+    Plot relative Vs perturbation profile.
+
+    Upper panel:
+        Topography
+
+    Lower panel:
+        dVs(%) = (Vs(x,z) - mean_Vs(z)) / mean_Vs(z) * 100
+    """
+    sta_valid = section_dict["sta_valid"]
+    deps = section_dict["deps"]
+    x_sta = section_dict["x_sta"]
+    topo_sta = section_dict["topo_sta"]
+    x_grid = section_dict["x_grid"]
+    topo_grid = section_dict["topo_grid"]
+    vs_grid = section_dict["vs_grid"]
+
+    rel_grid, mean_vs_depth = compute_vs_perturbation_percent(vs_grid)
+
+    dep_min = float(np.nanmin(deps))
+    dep_max = float(np.nanmax(deps))
+
+    x_min = float(np.nanmin(x_grid))
+    x_max = float(np.nanmax(x_grid))
+
+    topo_min = float(np.nanmin(topo_grid))
+    topo_max = float(np.nanmax(topo_grid))
+    topo_pad = max(50.0, 0.15 * (topo_max - topo_min if topo_max > topo_min else 100.0))
+
+    topo_ymin = topo_min - topo_pad
+    topo_ymax = topo_max + 0.25 * topo_pad
+
+    # ==================================================
+    # Topographic colored fill grid
+    # ==================================================
+    y_topo = np.linspace(topo_ymin, topo_ymax, TOPO_NY)
+    X_topo, Y_topo = np.meshgrid(x_grid, y_topo)
+
+    Z_topo = np.tile(topo_grid.reshape(1, -1), (TOPO_NY, 1))
+    Z_topo[Y_topo > Z_topo] = np.nan
+
+    topo_da = make_xarray_grid(
+        z=Z_topo,
+        x=x_grid,
+        y=y_topo,
+        name="topography",
+    )
+
+    rel_grid_smooth = gaussian_filter(rel_grid, sigma=(0.5, 1.0))
+
+    rel_da = make_xarray_grid(
+        z=rel_grid_smooth,
+        x=x_grid,
+        y=deps,
+        name="dvs_percent",
+    )
+
+    fig = pygmt.Figure()
+
+    pygmt.config(
+        FONT_LABEL="13p,Times-Bold,black",
+        FONT_ANNOT_PRIMARY="11p,Times-Roman,black",
+        FONT_TITLE="15p,Times-Bold,black",
+        MAP_FRAME_TYPE="plain",
+    )
+
+    # ==================================================
+    # Topography panel
+    # ==================================================
+    pygmt.makecpt(
+        cmap=CPT_TOPO,
+        series=[np.floor(topo_min / 50) * 50, np.ceil(topo_max / 50) * 50, 10],
+        continuous=True,
+    )
+
+    fig.basemap(
+        region=[x_min, x_max, topo_ymin, topo_ymax],
+        projection="X18c/3.0c",
+        frame=[
+            "WSne+tTopography and relative Vs perturbation profile",
+            'xaf+l"Distance along profile (km)"',
+            'yaf+l"Elevation (m)"',
+        ],
+    )
+
+    fig.grdimage(
+        grid=topo_da,
+        cmap=True,
+        nan_transparent=True,
+    )
+
+    fig.plot(
+        x=x_grid,
+        y=topo_grid,
+        pen="1.2p,black",
+    )
+
+    fig.plot(
+        x=x_sta,
+        y=topo_sta,
+        style="c0.12c",
+        fill="white",
+        pen="0.4p,black",
+    )
+
+    sta_label = sta_valid.iloc[::LABEL_EVERY_N_STATION].copy()
+
+    fig.text(
+        x=sta_label["distance"],
+        y=sta_label["elevation_m"],
+        text=sta_label["name"].astype(str),
+        font="6p,Times-Bold,black",
+        justify="CB",
+        offset="0c/0.12c",
+        no_clip=True,
+    )
+
+    fig.colorbar(
+        position="JMR+jML+w2.4c/0.25c+o0.5c/0c",
+        frame='xaf+l"Topo (m)"',
+    )
+
+    if extract_sta is not None:
+        mark_row = find_station_row_by_name(sta_valid, extract_sta)
+        if mark_row is not None:
+            x_mark = float(mark_row["distance"])
+            sta_mark = str(mark_row["name"])
+
+            fig.plot(
+                x=[x_mark, x_mark],
+                y=[topo_ymin, topo_ymax],
+                pen="1.2p,red,--",
+            )
+
+            fig.text(
+                x=x_mark,
+                y=topo_ymax,
+                text=sta_mark,
+                font="9p,Times-Bold,red",
+                justify="TL",
+                offset="0.05c/-0.05c",
+                no_clip=True,
+            )
+
+    # ==================================================
+    # Relative perturbation panel
+    # ==================================================
+    fig.shift_origin(yshift="-7.3c")
+
+    rel_min = float(np.nanmin(rel_grid))
+    rel_max = float(np.nanmax(rel_grid))
+
+    make_relative_cpt(rel_min, rel_max)
+
+    fig.basemap(
+        region=[x_min, x_max, dep_min, dep_max],
+        projection="X18c/-7.0c",
+        frame=[
+            "WSne",
+            'xaf+l"Distance along profile (km)"',
+            'yaf+l"Depth (km)"',
+        ],
+    )
+
+    fig.grdimage(
+        grid=rel_da,
+        cmap=True,
+        nan_transparent=True,
+    )
+
+    # Station positions at shallowest depth
+    fig.plot(
+        x=x_sta,
+        y=np.full_like(x_sta, dep_min),
+        style="t0.18c",
+        fill="white",
+        pen="0.4p,black",
+    )
+
+    if extract_sta is not None:
+        mark_row = find_station_row_by_name(sta_valid, extract_sta)
+        if mark_row is not None:
+            x_mark = float(mark_row["distance"])
+
+            fig.plot(
+                x=[x_mark, x_mark],
+                y=[dep_min, dep_max],
+                pen="1.2p,red,--",
+            )
+
+    fig.colorbar(
+        position="JMR+jML+w6.4c/0.35c+o0.65c/0c",
+        frame='xaf+l"dVs/Vs (%)"',
+    )
+
+    fig.savefig(OUT_PROFILE_REL_FIG, dpi=FIG_DPI)
+    print(f"[OK] Saved relative profile figure: {OUT_PROFILE_REL_FIG}")
 
 def find_station_row_by_name(sta_df, sta_name):
     sta_name = str(sta_name)
@@ -1301,18 +1552,23 @@ def main():
 
     # --------------------------------------------------
     # Full profile plot by PyGMT
-    # --------------------------------------------------
     if n_ok_all >= 2:
         section_dict = build_section_grid(section_profiles, sta_df)
+
+        # Absolute Vs profile
         plot_full_profiles_pygmt(section_dict, extract_sta=extract_sta)
+
+        # Relative perturbation profile
+        plot_full_profiles_relative_pygmt(section_dict, extract_sta=extract_sta)
     else:
-        print("[WARN] Not enough valid stations to build 2D profile figure.")
+        print("[WARN] Not enough valid stations to build 2D profile figures.")
 
     print("==================================================")
     print("[DONE]")
     print(f"1D data dir       : {OUT_DATA_DIR}")
     print(f"1D figure dir     : {OUT_FIG_1D_DIR}")
     print(f"Profile figure    : {OUT_PROFILE_FIG}")
+    print(f"Relative profile  : {OUT_PROFILE_REL_FIG}")
     print(f"Node-station map  : {OUT_NODE_STA_FIG}")
     print("==================================================")
 
