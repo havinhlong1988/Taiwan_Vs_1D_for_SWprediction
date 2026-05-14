@@ -1,0 +1,1 @@
+time /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/P6/Codes/MCMC_flex/do_MC_Para_Post_process_v3 /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/P6/CHT/data/01700_data/01700.control

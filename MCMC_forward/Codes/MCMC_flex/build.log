@@ -1,0 +1,2 @@
+g++ -O2 -Wall -fopenmp -std=c++0x -c do_MC_Para.C -I/home/hhhuang/Research/Bayesian_joint/boost-1.55.0-gcc630/include
+g++ -O2 -Wall -fopenmp -std=c++0x do_MC_Para.o ./DISP2/surfa.o ./DISP2/flat1.o ./DISP2/init.o ./DISP2/calcul.o ./DISP2/fast_surf.o ./RF/theo.o ./RF/qlayer.o ./RF/four1.o -o do_MC_Para  -fopenmp -lgfortran

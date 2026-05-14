@@ -1,0 +1,2 @@
+sh make_file_control.sh 01960 
+time /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/Codes/MCMC_flex/do_MC_Para /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/CHT/data/01960_data/01960.control

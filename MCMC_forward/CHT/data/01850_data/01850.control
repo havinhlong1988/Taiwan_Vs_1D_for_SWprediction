@@ -1,0 +1,19 @@
+model /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/CHT/data/01850_data/mod.01850
+para /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/CHT/data/01850_data/in.para_01850
+disp 1 2 1 /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/CHT/data/01850_data/01850.ph 3 /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/CHT/MonteCarlo/indata/in.hv
+rf /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/CHT/MonteCarlo/indata/in.rf 2.5
+Qmodel /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/CHT/MonteCarlo/indata/Qmodel.dat
+p 1
+mono 1
+monol 2
+gradl
+tt 12
+jt 10000
+outdir 01850 01850 -2
+n_thread 30
+indata /home/longhv/Research/Projects/MCMC_CHT_layercake_20260311/Taiwan_Vs_1D_for_SWprediction/MCMC_forward/CHT/data/01850_data/in.data_01850
+mc_range 10.0
+dstep 0.1
+plottype 1
+invtype 1.0
+end
